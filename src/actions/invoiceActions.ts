@@ -120,3 +120,4 @@ export async function saveInvoice(invoiceData: Omit<Invoice, 'id' | 'userId' | '
     return { success: false, error: error.message || "Failed to save invoice to database." };
   }
 }
+
