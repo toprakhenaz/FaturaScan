@@ -2,7 +2,7 @@
 'use server';
 
 import { z } from 'zod';
-import { auth, db, app as firebaseApp } from '@/lib/firebase'; // Import app for logging
+import { auth, db, app as firebaseAppInstance } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { extractInvoiceData, ExtractInvoiceDataInput, ExtractInvoiceDataOutput } from '@/ai/flows/extract-invoice-data';
 import { validateExtractedData, ValidateExtractedDataInput, ValidateExtractedDataOutput } from '@/ai/flows/validate-extracted-data';
@@ -67,47 +67,36 @@ const saveInvoiceSchema = z.object({
 export async function saveInvoice(invoiceData: Omit<Invoice, 'id' | 'userId' | 'createdAt' | 'updatedAt'>): Promise<{ success: boolean; invoiceId?: string; error?: string }> {
   
   console.log("[saveInvoice Action] Called.");
-  if (!auth) {
-    console.error("[saveInvoice Action] Firebase auth object is not initialized from firebase.ts. This is unexpected.");
-    return { success: false, error: "Firebase auth service is not configured. Please contact support." };
-  }
-  if (!firebaseApp) { // firebaseApp is imported from @/lib/firebase
-    console.error("[saveInvoice Action] Firebase app object is not initialized from firebase.ts. This is unexpected.");
-     return { success: false, error: "Firebase app service is not configured. Please contact support." };
-  }
 
-  console.log(`[saveInvoice Action] Using Firebase app: ${firebaseApp.name}`);
+  if (!auth) {
+    console.error("[saveInvoice Action] Firebase auth object (from @/lib/firebase) is not available. This is a critical initialization issue.");
+    return { success: false, error: "Firebase auth service is not configured. Please contact support. (Auth Object Check)" };
+  }
+  if (!firebaseAppInstance) {
+    console.error("[saveInvoice Action] Firebase app instance (from @/lib/firebase) is not available. This could indicate an initialization problem.");
+    // Not returning immediately, as auth might still function if initialized, but it's a warning sign.
+  } else {
+    console.log(`[saveInvoice Action] Using Firebase app instance from @/lib/firebase: ${firebaseAppInstance.name}`);
+  }
 
   try {
-    console.log("[saveInvoice Action] Waiting for auth.authStateReady()...");
+    console.log("[saveInvoice Action] Attempting to wait for auth.authStateReady()...");
     await auth.authStateReady();
-    console.log("[saveInvoice Action] auth.authStateReady() resolved successfully.");
+    console.log("[saveInvoice Action] auth.authStateReady() promise resolved.");
   } catch (e: any) { 
-    console.error("[saveInvoice Action] Error during auth.authStateReady():", e.message, e.stack);
+    console.error("[saveInvoice Action] Error during auth.authStateReady() call:", e.message, e.stack);
+    // Potentially return error here if authStateReady itself fails critically
+    // return { success: false, error: "Authentication state could not be determined." };
   }
   
+  // Crucial check:
   const currentUser: User | null = auth.currentUser;
   
   if (currentUser) {
     console.log(`[saveInvoice Action] auth.currentUser successfully retrieved: UID ${currentUser.uid}, Email: ${currentUser.email}`);
   } else {
-    console.error("[saveInvoice Action] auth.currentUser is null AFTER authStateReady() resolved. This indicates the server-side SDK instance is not picking up the authenticated session.");
-    // Attempt to get more diagnostic info from the auth object if currentUser is null
-    if (auth) {
-        try {
-            // This part is speculative if currentUser is already null, but for diagnostics:
-            const freshCurrentUser = auth.currentUser; 
-            if (freshCurrentUser) {
-                 const idTokenResult = await freshCurrentUser.getIdTokenResult(true); // Force refresh
-                 console.log('[saveInvoice Action] Attempted getIdTokenResult on potentially fresh currentUser:', idTokenResult ? 'has result' : 'no result for fresh user');
-            } else {
-                 console.log('[saveInvoice Action] auth.currentUser is still null, cannot call getIdTokenResult.');
-            }
-        } catch (tokenError: any) {
-            console.error('[saveInvoice Action] Error trying to getIdTokenResult (or accessing currentUser for it):', tokenError.message);
-        }
-    }
-    return { success: false, error: "User not authenticated. Please ensure you are logged in and try again. (Server Context Check)" };
+    console.error("[saveInvoice Action] auth.currentUser is NULL after authStateReady() resolved. This usually means the server action's auth context isn't picking up the client session. Check for browser extensions (ad blockers, privacy tools) that might block Firebase communication (ERR_BLOCKED_BY_CLIENT), or other session-related issues.");
+    return { success: false, error: "User not authenticated. Please ensure you are logged in and try again. (Server Context Check Failed)" };
   }
 
   const validation = saveInvoiceSchema.safeParse(invoiceData);
@@ -117,6 +106,7 @@ export async function saveInvoice(invoiceData: Omit<Invoice, 'id' | 'userId' | '
   }
 
   try {
+    console.log(`[saveInvoice Action] Attempting to save invoice for user: ${currentUser.uid}`);
     const docRef = await addDoc(collection(db, 'invoices'), {
       ...invoiceData,
       userId: currentUser.uid, 
@@ -126,8 +116,7 @@ export async function saveInvoice(invoiceData: Omit<Invoice, 'id' | 'userId' | '
     console.log("[saveInvoice Action] Invoice saved successfully with ID:", docRef.id);
     return { success: true, invoiceId: docRef.id };
   } catch (error: any) {
-    console.error("[saveInvoice Action] Error saving invoice to Firestore:", error);
+    console.error("[saveInvoice Action] Error saving invoice to Firestore:", error.message, error.stack);
     return { success: false, error: error.message || "Failed to save invoice to database." };
   }
 }
-
