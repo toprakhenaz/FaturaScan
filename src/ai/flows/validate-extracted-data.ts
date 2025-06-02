@@ -77,7 +77,6 @@ const validateExtractedDataPrompt = ai.definePrompt({
 
   Based on your validation, determine whether the data is suspicious and provide a summary of your findings.
 
-  ${'' /* Instructions to steer the model towards answering in the specified schema */ ''}
   Here is the schema you must follow:
   ${'```'}
   ${JSON.stringify(ValidateExtractedDataOutputSchema.shape, null, 2)}
@@ -120,22 +119,30 @@ const validateExtractedDataFlow = ai.defineFlow(
       reasons.push('The vendor name is invalid (too short).');
     }
 
-    const validationResult = {
-      isDateValid,
-      isAmountValid,
-      isVendorValid,
-      suspicious,
-      reasons,
+    // Use the LLM's validation results if available, otherwise use rule-based.
+    // This allows the LLM to potentially provide more nuanced validation or catch things the rules miss.
+    const finalValidationResult = output?.validationResult ? {
+        isDateValid: output.validationResult.isDateValid !== undefined ? output.validationResult.isDateValid : isDateValid,
+        isAmountValid: output.validationResult.isAmountValid !== undefined ? output.validationResult.isAmountValid : isAmountValid,
+        isVendorValid: output.validationResult.isVendorValid !== undefined ? output.validationResult.isVendorValid : isVendorValid,
+        suspicious: output.validationResult.suspicious !== undefined ? output.validationResult.suspicious : suspicious,
+        reasons: output.validationResult.reasons?.length ? output.validationResult.reasons : reasons,
+    } : {
+        isDateValid,
+        isAmountValid,
+        isVendorValid,
+        suspicious,
+        reasons,
     };
-
-    const summary = suspicious
-      ? `The extracted data is suspicious. Reasons: ${reasons.join(', ')}`
-      : 'The extracted data appears to be valid.';
+    
+    const finalSummary = output?.summary || (finalValidationResult.suspicious
+      ? `The extracted data is suspicious. Reasons: ${finalValidationResult.reasons.join(', ')}`
+      : 'The extracted data appears to be valid.');
 
     return {
-      validationResult: validationResult,
-      summary: summary,
-      ...output,
-    } as ValidateExtractedDataOutput;
+      validationResult: finalValidationResult,
+      summary: finalSummary,
+    };
   }
 );
+
