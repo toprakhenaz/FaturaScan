@@ -1,3 +1,4 @@
+
 import type { Timestamp } from 'firebase/firestore';
 
 export interface Invoice {
@@ -30,3 +31,13 @@ export interface Invoice {
 export type InvoiceFormData = Omit<Invoice, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'imageFileName'> & {
   photoDataUri?: string; // Temporary for AI processing
 };
+
+export type UserRole = 'admin' | 'user';
+
+export interface UserProfile {
+  uid: string;
+  email: string | null;
+  displayName?: string | null;
+  role: UserRole;
+  createdAt: Timestamp;
+}

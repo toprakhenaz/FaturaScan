@@ -1,4 +1,5 @@
-'use client'; // Required for useAuth and useRouter
+
+'use client'; 
 
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
@@ -9,16 +10,18 @@ import AppSidebar from '@/components/layout/AppSidebar';
 import { Loader2 } from 'lucide-react';
 
 export default function AppLayout({ children }: { children: ReactNode }) {
-  const { currentUser, loading } = useAuth();
+  const { currentUser, authLoading, roleLoading, userRole } = useAuth();
   const router = useRouter();
 
+  const isLoading = authLoading || roleLoading;
+
   useEffect(() => {
-    if (!loading && !currentUser) {
+    if (!isLoading && !currentUser) {
       router.replace('/login');
     }
-  }, [currentUser, loading, router]);
+  }, [currentUser, isLoading, router]);
 
-  if (loading || !currentUser) {
+  if (isLoading || !currentUser) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />

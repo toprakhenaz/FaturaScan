@@ -1,9 +1,10 @@
+
 'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +12,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import type { UserProfile } from '@/lib/types';
 
 export default function SignupForm() {
   const [email, setEmail] = useState('');
@@ -33,7 +36,20 @@ export default function SignupForm() {
     }
     setLoading(true);
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      if (user && db) {
+        const userProfile: UserProfile = {
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName,
+          role: 'user', // Default role for new users
+          createdAt: serverTimestamp() as Timestamp,
+        };
+        await setDoc(doc(db, 'users', user.uid), userProfile);
+      }
+      
       toast({ title: 'Signup Successful', description: 'Your account has been created.' });
       router.push('/dashboard');
     } catch (err: any) {

@@ -1,14 +1,20 @@
+
 'use client';
 
 import type { User } from 'firebase/auth';
 import { createContext, useContext, useEffect, useState } from 'react';
-import { auth, appInitializationError as firebaseAppInitError } from '@/lib/firebase';
+import { auth, db, appInitializationError as firebaseAppInitError } from '@/lib/firebase';
 import type { ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
+import { doc, getDoc, Timestamp } from 'firebase/firestore';
+import type { UserProfile, UserRole } from '@/lib/types';
 
 interface AuthContextType {
   currentUser: User | null;
-  loading: boolean;
+  userProfile: UserProfile | null;
+  userRole: UserRole | null;
+  authLoading: boolean; // Firebase auth state loading
+  roleLoading: boolean; // Firestore user profile/role loading
   initializationError: string | null;
 }
 
@@ -16,43 +22,82 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [roleLoading, setRoleLoading] = useState(true);
 
   useEffect(() => {
     if (firebaseAppInitError) {
       console.error("[AuthContext] Firebase app initialization failed previously. Auth listener will not be set up. Error:", firebaseAppInitError);
-      setLoading(false); // Stop loading, currentUser remains null
+      setAuthLoading(false);
+      setRoleLoading(false);
       return;
     }
 
-    if (!auth) {
-      console.error("[AuthContext] Firebase auth object is not available (it might be undefined after an initialization issue). Cannot set up auth listener.");
-      setLoading(false);
+    if (!auth || !db) {
+      console.error("[AuthContext] Firebase auth or db object is not available. Cannot set up auth listener or fetch profile.");
+      setAuthLoading(false);
+      setRoleLoading(false);
       return;
     }
 
-    // console.log('[AuthContext] Setting up Firebase auth state listener.');
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      // console.log('[AuthContext] Auth state changed. User:', user ? user.uid : null);
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
       setCurrentUser(user);
-      setLoading(false);
+      setAuthLoading(false);
+
+      if (user) {
+        setRoleLoading(true);
+        try {
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDocSnap = await getDoc(userDocRef);
+          if (userDocSnap.exists()) {
+            const profileData = userDocSnap.data() as UserProfile;
+            setUserProfile(profileData);
+            setUserRole(profileData.role);
+          } else {
+            // This case should ideally not happen if signup creates a profile.
+            // Fallback to 'user' role or handle as an anomaly.
+            console.warn(`[AuthContext] User profile for UID ${user.uid} not found in Firestore. Defaulting role to 'user'.`);
+            const defaultProfile: UserProfile = {
+              uid: user.uid,
+              email: user.email,
+              role: 'user',
+              createdAt: Timestamp.now() // Or consider not setting it if not found
+            };
+            setUserProfile(defaultProfile);
+            setUserRole('user');
+          }
+        } catch (error) {
+          console.error("[AuthContext] Error fetching user profile:", error);
+          setUserProfile(null); // Ensure profile is null on error
+          setUserRole(null); // Ensure role is null on error
+        } finally {
+          setRoleLoading(false);
+        }
+      } else {
+        setUserProfile(null);
+        setUserRole(null);
+        setRoleLoading(false); // No user, so role loading is complete (no role).
+      }
     });
 
     return () => {
-      // console.log('[AuthContext] Cleaning up Firebase auth state listener.');
       unsubscribe();
     };
   }, []);
 
-  if (loading && !firebaseAppInitError) { // Only show global loader if no init error and still loading auth state
+  const overallLoading = authLoading || roleLoading;
+
+  if (overallLoading && !firebaseAppInitError) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center">
+      <div className="flex h-screen w-screen items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
       </div>
     );
   }
   
-  if (firebaseAppInitError && !currentUser) { // If init error and still no user (stuck)
+  if (firebaseAppInitError && !currentUser) {
      return (
       <div className="flex h-screen w-screen items-center justify-center bg-background p-4">
         <div className="max-w-md rounded-lg border border-destructive bg-card p-6 text-center shadow-lg">
@@ -65,9 +110,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
   }
 
-
   return (
-    <AuthContext.Provider value={{ currentUser, loading, initializationError: firebaseAppInitError }}>
+    <AuthContext.Provider value={{ currentUser, userProfile, userRole, authLoading, roleLoading, initializationError: firebaseAppInitError }}>
       {children}
     </AuthContext.Provider>
   );
