@@ -56,29 +56,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUserProfile(profileData);
             setUserRole(profileData.role);
           } else {
-            // This case should ideally not happen if signup creates a profile.
-            // Fallback to 'user' role or handle as an anomaly.
             console.warn(`[AuthContext] User profile for UID ${user.uid} not found in Firestore. Defaulting role to 'user'.`);
             const defaultProfile: UserProfile = {
               uid: user.uid,
               email: user.email,
               role: 'user',
-              createdAt: Timestamp.now() // Or consider not setting it if not found
+              createdAt: Timestamp.now()
             };
             setUserProfile(defaultProfile);
             setUserRole('user');
           }
         } catch (error) {
           console.error("[AuthContext] Error fetching user profile:", error);
-          setUserProfile(null); // Ensure profile is null on error
-          setUserRole(null); // Ensure role is null on error
+          setUserProfile(null); 
+          setUserRole(null); 
         } finally {
           setRoleLoading(false);
         }
       } else {
         setUserProfile(null);
         setUserRole(null);
-        setRoleLoading(false); // No user, so role loading is complete (no role).
+        setRoleLoading(false); 
       }
     });
 
@@ -89,29 +87,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const overallLoading = authLoading || roleLoading;
 
-  if (overallLoading && !firebaseAppInitError) {
-    return (
-      <div className="flex h-screen w-screen items-center justify-center bg-background">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-      </div>
-    );
-  }
-  
-  if (firebaseAppInitError && !currentUser) {
-     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-background p-4">
-        <div className="max-w-md rounded-lg border border-destructive bg-card p-6 text-center shadow-lg">
-          <h1 className="mb-4 text-xl font-bold text-destructive">Application Error</h1>
-          <p className="text-card-foreground">Firebase could not be initialized:</p>
-          <p className="mt-2 text-sm text-destructive-foreground bg-destructive/20 p-2 rounded-md">{firebaseAppInitError}</p>
-          <p className="mt-4 text-xs text-muted-foreground">Please check the browser console for more details and ensure your Firebase environment variables are correctly set in <code>.env.local</code> and the server has been restarted.</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <AuthContext.Provider value={{ currentUser, userProfile, userRole, authLoading, roleLoading, initializationError: firebaseAppInitError }}>
+      {overallLoading && !firebaseAppInitError && (
+        <div className="fixed inset-0 z-50 flex h-screen w-screen items-center justify-center bg-background">
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        </div>
+      )}
+      {firebaseAppInitError && !currentUser && (
+        <div className="fixed inset-0 z-50 flex h-screen w-screen items-center justify-center bg-background p-4">
+          <div className="max-w-md rounded-lg border border-destructive bg-card p-6 text-center shadow-lg">
+            <h1 className="mb-4 text-xl font-bold text-destructive">Application Error</h1>
+            <p className="text-card-foreground">Firebase could not be initialized:</p>
+            <p className="mt-2 text-sm text-destructive-foreground bg-destructive/20 p-2 rounded-md">{firebaseAppInitError}</p>
+            <p className="mt-4 text-xs text-muted-foreground">Please check the browser console for more details and ensure your Firebase environment variables are correctly set in <code>.env.local</code> and the server has been restarted.</p>
+          </div>
+        </div>
+      )}
+      {/* Render children, which might be covered by the loader/error overlay */}
       {children}
     </AuthContext.Provider>
   );
