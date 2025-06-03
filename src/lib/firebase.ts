@@ -1,5 +1,6 @@
+
 // src/lib/firebase.ts
-import { initializeApp, getApps, getApp, type FirebaseOptions } from 'firebase/app';
+import { initializeApp, getApps, getApp, type FirebaseApp, type FirebaseOptions } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
@@ -26,7 +27,7 @@ const keyToEnvVarMapping: Record<keyof FirebaseOptions, string> = {
 
 const requiredConfigKeys: Array<keyof FirebaseOptions> = ['apiKey', 'authDomain', 'projectId'];
 
-let app: any; // FirebaseApp
+let app: FirebaseApp;
 let auth: Auth | undefined = undefined;
 let db: Firestore | undefined = undefined;
 let storage: FirebaseStorage | undefined = undefined;
@@ -68,5 +69,6 @@ if (missingEnvVars.length > 0) {
     storage = undefined;
   }
 }
-
+console.log('[Firebase] Module loaded.');
 export { app, auth, db, storage, appInitializationError };
+
