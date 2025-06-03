@@ -1,4 +1,3 @@
-
 'use server';
 
 import type { User } from 'firebase/auth';
@@ -36,12 +35,23 @@ export async function processInvoiceUpload(formData: FormData): Promise<{
     if (!extractedData || !extractedData.date || extractedData.amount == null || !extractedData.vendor) {
         // Even if some new fields are missing, proceed with validation for core fields.
         // The form will handle missing optional fields.
-        let errorMsg = "AI could not extract all required core fields (Date, Amount, Vendor). ";
-        if (extractedData && (!extractedData.date || extractedData.amount == null || !extractedData.vendor)) {
-             errorMsg += `Missing: ${!extractedData.date ? 'Date, ' : ''}${extractedData.amount == null ? 'Amount, ' : ''}${!extractedData.vendor ? 'Vendor' : ''}`.slice(0, -2);
-        } else {
-            errorMsg += "Please check the image or try again.";
+        let errorMsg = "AI could not extract all required core fields. ";
+        const missingFields = [];
+        
+        if (!extractedData) {
+            errorMsg = "AI extraction failed completely. Please ensure the image is clear and try again.";
+            return { extractedData: null, validationResult: null, error: errorMsg };
         }
+        
+        if (!extractedData.date) missingFields.push('Date');
+        if (extractedData.amount == null) missingFields.push('Amount');
+        if (!extractedData.vendor) missingFields.push('Vendor');
+        
+        if (missingFields.length > 0) {
+            errorMsg += `Missing: ${missingFields.join(', ')}. `;
+            errorMsg += "Please ensure the receipt image is clear and properly oriented.";
+        }
+        
         // We still return extractedData so user can see what was extracted
         return { extractedData, validationResult: null, error: errorMsg };
     }

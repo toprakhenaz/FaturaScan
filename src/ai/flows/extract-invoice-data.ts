@@ -1,4 +1,3 @@
-
 'use server';
 
 /**
@@ -47,30 +46,72 @@ const prompt = ai.definePrompt({
   name: 'extractInvoiceDataPrompt',
   input: {schema: ExtractInvoiceDataInputSchema},
   output: {schema: ExtractInvoiceDataOutputSchema},
-  prompt: `You are an expert accounting assistant specializing in extracting information from Turkish invoices, receipts, and "Bilgi Fişi" (information slips) like the ones from BİM.
-  Your task is to meticulously extract key information from the provided scanned image. Prioritize accuracy. If a field is ambiguous or not present, it's better to omit it or leave it empty/null than to guess incorrectly.
+  prompt: `You are an expert accounting assistant specializing in extracting information from Turkish invoices, receipts, e-Archive invoices (e-Arşiv Fatura), and "Bilgi Fişi" (information slips). Your task is to meticulously extract key information from the provided scanned image. The document could be:
 
-  Please extract the following information:
-  - Vendor (Satıcı Adı/Firma Adı): Identify the company or entity that issued the document (e.g., "KAYALI ŞİRKETLER GRUBU", "BİM BİRLEŞİK MAĞAZALAR A.Ş."). This is often found at the top.
-  - Date (Tarih/Düzenlenme Tarihi): The date the document was issued. Convert common Turkish formats like DD.MM.YYYY or "Gün Ay Yıl" (e.g., "3 Temmuz 2030") to YYYY-MM-DD format. For example, "23.02.2024" should become "2024-02-23". If not found, omit.
-  - Amount (Toplam Tutar/Genel Toplam): The grand total amount due. Look for labels like "TOPLAM", "GENEL TOPLAM", "ÖDENECEK TUTAR", "FATURA TOPLAMI". It's often at the bottom or near payment details. Extract the numeric value. If not found, omit.
-  - Invoice Number (Fatura No): The unique identification number. Look for "Fatura No" or "FATURA NO" explicitly. If there are multiple numbers like a simple "NO:", "Fiş No:", or "ETTN", prioritize the one labeled "FATURA NO". If not found, omit.
-  - Tax Amount (Toplam Vergi Tutarı/KDV Tutarı): The total amount of tax. Look for labels like "TOPKDV", "KDV TOPLAMI", "Toplam Vergi". 
-    If only a percentage and a subtotal are provided, calculate the tax amount.
-    If there's a discrepancy between a listed tax amount and a calculated one, prefer the explicitly listed tax amount. If no tax information is found, omit.
-  - Items (Kalemler/Ürünler): A list of line items. For each item, extract:
-    - description (AÇIKLAMA): The description of the product or service.
-    - quantity (MİKTAR): The quantity of the item. For retail receipts or single-item entries, if quantity is not explicitly stated, assume 1. A percentage like "%20" next to an item is likely a VAT rate or discount, NOT quantity.
-    - unitPrice (BİRİM FİYATI): The price per unit. If quantity is 1, this may be the same as totalPrice. If not clearly identifiable, it can be omitted.
-    - totalPrice (TOPLAM TUTAR): The total price for that line item. For retail receipts, the listed price for an item is often this total price (potentially KDV dahil/including VAT).
-    If line items are not clearly identifiable or not applicable, return an empty array for items.
+A retail receipt (like BİM)
+A formal e-Archive invoice (e-Arşiv Fatura)
+A regular invoice or receipt
+Prioritize accuracy. If a field is ambiguous or not present, it's better to omit it or leave it empty/null than to guess incorrectly.
 
-  Here is the scanned image:
-  {{media url=photoDataUri}}
+Please extract the following information:
 
-  Return the extracted information in JSON format according to the defined output schema. Ensure all monetary values are numbers, not strings with currency symbols (e.g., "4,499.00 TL" should be 4499.00).
-  For core fields like Date, Amount (grand total), and Vendor: if they are absolutely unidentifiable from the image, you can omit them, but try your best to find them.
-  `,
+Vendor (Satıcı Adı/Firma Adı): Identify the company or entity that issued the document.
+For receipts: Look at the top (e.g., "BİM BİRLEŞİK MAĞAZALAR A.Ş.")
+For e-Archive invoices: Look for "Satıcı (Şube):" section or company name at the top (e.g., "ORKA AKADEMİ TİCARET A.Ş.")
+Date (Tarih/Düzenlenme Tarihi/Fatura Tarihi): The date the document was issued.
+For receipts: Look for date patterns like DD.MM.YYYY or DD/MM/YYYY near the top
+For e-Archive invoices: Look for "Fatura Tarihi:" field
+Convert to YYYY-MM-DD format (e.g., "01.10.2023" → "2023-10-01", "08/05/2024" → "2024-05-08")
+Amount (Toplam Tutar/Genel Toplam/Ödenecek Tutar): The grand total amount due.
+For receipts: Look for "TOPLAM" preceded by "*" at the bottom
+For e-Archive invoices: Look for "ÖDENECEK TUTAR:" field (this is the final amount to be paid)
+Extract the numeric value (handle both comma and dot as decimal separators)
+Invoice Number (Fatura No/Fiş No): The unique identification number.
+For receipts: Look for "NO:", "Fiş No:"
+For e-Archive invoices: Look for "Fatura No:" or "Fatura Saati:" section
+For BİM receipts, this might be the transaction number
+Tax Amount (Toplam Vergi Tutarı/KDV Tutarı): The total amount of tax.
+For receipts: Look for "TOPKDV" followed by a number
+For e-Archive invoices: Look for "K.D.V. Tutarı:" or "Hesaplanan K.D.V." in the totals section
+Sum all tax amounts if multiple rates are shown
+Items (Kalemler/Ürünler): A list of line items. For each item, extract:
+description (AÇIKLAMA/Mal/Hizmet): The description of the product or service
+quantity (MİKTAR/Miktar): The quantity of the item
+For receipts: %1.00 or %1 indicates quantity 1
+For e-Archive invoices: Look in the "Miktar" column
+Default to 1 if not specified
+unitPrice (BİRİM FİYATI/Birim Fiyat): The price per unit
+For e-Archive invoices: Look in the "Birim Fiyat" column
+For receipts: May not be explicitly shown if quantity is 1
+totalPrice (TOPLAM TUTAR/Tutar): The total price for that line item
+For receipts: The price preceded by "*"
+For e-Archive invoices: Look in the "Tutar" column (usually rightmost) If line items are not clearly identifiable, return an empty array for items.
+Important notes:
+
+For BİM receipts:
+The vendor name is at the very top
+Date is in DD.MM.YYYY format near the top
+Items show %1.00 (quantity) followed by *price
+TOPLAM is near the bottom with "*"
+TOPKDV shows tax amount
+For e-Archive invoices:
+Look for structured tables with columns
+"ÖDENECEK TUTAR" is the final amount
+Tax information is in "K.D.V." sections
+Date format might be DD/MM/YYYY or DD.MM.YYYY
+Here is the scanned image: {{media url=photoDataUri}}
+
+Return the extracted information in JSON format according to the defined output schema. IMPORTANT formatting rules:
+
+Monetary values: Return as numbers without currency symbols
+Handle comma as decimal separator: "10.000,00 TL" → 10000.00
+Handle dot as thousands separator: "2.000,00" → 2000.00
+Remove spaces and "TL": "12 000,00 TL" → 12000.00
+Dates: Always convert to YYYY-MM-DD format
+"08/05/2024" → "2024-05-08"
+"01.10.2023" → "2023-10-01"
+"3 Temmuz 2030" → "2030-07-03"
+For core fields (Date, Amount, Vendor): Try your best to find them before giving up. These are usually clearly visible in both receipts and invoices. `,
 });
 
 const extractInvoiceDataFlow = ai.defineFlow(

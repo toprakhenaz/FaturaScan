@@ -107,6 +107,7 @@ export default function ScanPage() {
       <div>
         <h1 className="font-headline text-3xl font-bold tracking-tight">Scan Document</h1>
         <p className="text-muted-foreground">Upload an image of your invoice or receipt to extract its data.</p>
+        <p className="text-xs text-muted-foreground mt-2">Supported document types: BİM market receipts, e-Archive invoices, regular invoices, information slips. Turkish number/date formats and TL/₺ are supported.</p>
       </div>
 
       {!extractedData && (
@@ -148,7 +149,7 @@ export default function ScanPage() {
               )}
               <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90" disabled={!file || loading}>
                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileScan className="mr-2 h-4 w-4" />}
-                {loading ? 'Processing...' : 'Process Document'}
+                {loading ? 'Processing... (This may take 10-30 seconds)' : 'Process Document'}
               </Button>
             </form>
           </CardContent>
