@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -12,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore'; // Timestamp'ı firebase/firestore'dan import et
 import type { UserProfile } from '@/lib/types';
 
 export default function SignupForm() {
@@ -39,22 +38,49 @@ export default function SignupForm() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
+      let profileCreationSuccessful = false;
       if (user && db) {
-        const userProfile: UserProfile = {
+        const userProfileData: UserProfile = {
           uid: user.uid,
           email: user.email,
           displayName: user.displayName,
-          role: 'user', // Default role for new users
+          role: 'user', // Yeni kullanıcılar için varsayılan rol
           createdAt: serverTimestamp() as Timestamp,
         };
-        await setDoc(doc(db, 'users', user.uid), userProfile);
+        try {
+          await setDoc(doc(db, 'users', user.uid), userProfileData);
+          console.log(`[SignupForm] User profile created in Firestore for UID: ${user.uid}`);
+          profileCreationSuccessful = true;
+        } catch (firestoreError: any) {
+          console.error("[SignupForm] Error creating user profile in Firestore:", firestoreError);
+          toast({
+            title: 'Signup Warning',
+            description: 'Account created, but saving user profile failed. Some features might not work correctly. Please contact support.',
+            variant: 'destructive',
+            duration: 7000,
+          });
+          // Profil oluşturma başarısız olsa bile devam et, kullanıcı en azından Auth'a kaydedildi.
+        }
       }
       
-      toast({ title: 'Signup Successful', description: 'Your account has been created.' });
+      if (profileCreationSuccessful) {
+        toast({ title: 'Signup Successful', description: 'Your account has been created and profile saved.' });
+      } else if (user) {
+         // Profil kaydedilemediyse ama auth başarılıysa, bu zaten yukarıdaki toast ile belirtildi.
+         // İsteğe bağlı olarak burada farklı bir mesaj gösterilebilir.
+         toast({ title: 'Signup Successful (Auth Only)', description: 'Your account is created. Profile issues encountered.' });
+      }
       router.push('/dashboard');
     } catch (err: any) {
       setError(err.message);
-      toast({ title: 'Signup Failed', description: err.message, variant: 'destructive' });
+      // Firebase Auth hatalarını daha kullanıcı dostu hale getirebiliriz
+      let friendlyMessage = err.message;
+      if (err.code === 'auth/email-already-in-use') {
+        friendlyMessage = 'This email address is already in use. Please try a different email or login.';
+      } else if (err.code === 'auth/weak-password') {
+        friendlyMessage = 'The password is too weak. Please use a stronger password (at least 6 characters).';
+      }
+      toast({ title: 'Signup Failed', description: friendlyMessage, variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -76,6 +102,7 @@ export default function SignupForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              autoComplete="email"
               placeholder="you@example.com"
             />
           </div>
@@ -88,6 +115,7 @@ export default function SignupForm() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="new-password"
                 placeholder="••••••••"
               />
               <Button
@@ -110,6 +138,7 @@ export default function SignupForm() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
+                autoComplete="new-password"
                 placeholder="••••••••"
               />
                <Button
