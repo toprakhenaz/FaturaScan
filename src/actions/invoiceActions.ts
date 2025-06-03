@@ -2,12 +2,12 @@
 'use server';
 
 import { z } from 'zod';
-import { auth, db, app as firebaseAppInstance } from '@/lib/firebase';
+import { db } from '@/lib/firebase'; // Removed auth, app as they are not directly used here for auth check
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { extractInvoiceData, ExtractInvoiceDataInput, ExtractInvoiceDataOutput } from '@/ai/flows/extract-invoice-data';
 import { validateExtractedData, ValidateExtractedDataInput, ValidateExtractedDataOutput } from '@/ai/flows/validate-extracted-data';
 import type { Invoice } from '@/lib/types';
-import type { User } from 'firebase/auth';
+// User type from firebase/auth is not needed if we pass userId
 
 const processInvoiceSchema = z.object({
   photoDataUri: z.string().startsWith('data:image/', { message: "Invalid image data URI" }),
@@ -64,39 +64,24 @@ const saveInvoiceSchema = z.object({
 });
 
 
-export async function saveInvoice(invoiceData: Omit<Invoice, 'id' | 'userId' | 'createdAt' | 'updatedAt'>): Promise<{ success: boolean; invoiceId?: string; error?: string }> {
+export async function saveInvoice(
+  invoiceData: Omit<Invoice, 'id' | 'userId' | 'createdAt' | 'updatedAt'>,
+  userId: string // Added userId as a parameter
+): Promise<{ success: boolean; invoiceId?: string; error?: string }> {
   
-  console.log("[saveInvoice Action] Initiated.");
+  console.log("[saveInvoice Action] Initiated for userId:", userId);
 
-  if (!auth) {
-    const authInitErrorMsg = "[saveInvoice Action] Firebase auth object (from @/lib/firebase) is not available. Critical initialization issue.";
-    console.error(authInitErrorMsg);
-    return { success: false, error: "Firebase auth service is not configured. Please contact support. (SA-AuthObj)" };
-  }
-  if (!firebaseAppInstance) {
-    console.warn("[saveInvoice Action] Firebase app instance (from @/lib/firebase) is not available. Potential initialization problem.");
-  } else {
-    console.log(`[saveInvoice Action] Using Firebase app instance: ${firebaseAppInstance.name}, Auth instance app name: ${auth.app.name}`);
+  if (!userId) {
+    console.error("[saveInvoice Action] userId parameter is missing or empty.");
+    return { success: false, error: "User ID is missing. Cannot save invoice." };
   }
 
-  try {
-    console.log("[saveInvoice Action] Waiting for auth.authStateReady()...");
-    await auth.authStateReady();
-    console.log("[saveInvoice Action] auth.authStateReady() resolved.");
-  } catch (e: any) { 
-    console.error("[saveInvoice Action] Error during auth.authStateReady():", e.message);
-    // Not returning immediately, will check currentUser next.
+  if (!db) {
+    const dbInitErrorMsg = "[saveInvoice Action] Firebase db object (from @/lib/firebase) is not available. Critical initialization issue.";
+    console.error(dbInitErrorMsg);
+    return { success: false, error: "Firebase database service is not configured. Please contact support. (SA-DBObj)" };
   }
   
-  const currentUser: User | null = auth.currentUser;
-  
-  if (!currentUser) {
-    console.error("[saveInvoice Action] auth.currentUser is NULL. This means the server action could not identify an authenticated user session. This can be due to client-side request blocking (e.g., browser extensions), issues with session propagation to server actions, or the user not being logged in properly on the client.");
-    return { success: false, error: "User not authenticated by server. Please ensure you are logged in and try again. If issues persist, try an incognito window or check browser extensions. (SA-NoUser)" };
-  }
-  
-  console.log(`[saveInvoice Action] User identified: UID ${currentUser.uid}, Email: ${currentUser.email}`);
-
   const validation = saveInvoiceSchema.safeParse(invoiceData);
   if(!validation.success) {
     console.warn("[saveInvoice Action] Invoice data validation failed:", validation.error.errors);
@@ -104,10 +89,10 @@ export async function saveInvoice(invoiceData: Omit<Invoice, 'id' | 'userId' | '
   }
 
   try {
-    console.log(`[saveInvoice Action] Attempting to save invoice for user: ${currentUser.uid}`);
+    console.log(`[saveInvoice Action] Attempting to save invoice for user: ${userId}`);
     const docRef = await addDoc(collection(db, 'invoices'), {
       ...invoiceData,
-      userId: currentUser.uid, 
+      userId: userId, // Use the passed userId
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -118,4 +103,3 @@ export async function saveInvoice(invoiceData: Omit<Invoice, 'id' | 'userId' | '
     return { success: false, error: error.message || "Failed to save invoice to database." };
   }
 }
-

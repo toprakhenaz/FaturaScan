@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, type FormEvent } from 'react';
@@ -14,6 +15,7 @@ import type { Invoice, InvoiceFormData } from '@/lib/types';
 import type { ExtractInvoiceDataOutput } from '@/ai/flows/extract-invoice-data';
 import type { ValidateExtractedDataOutput } from '@/ai/flows/validate-extracted-data';
 import { AlertTriangle, CheckCircle2, Loader2, Save } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext'; // Import useAuth
 
 interface InvoiceFormProps {
   initialExtractedData: ExtractInvoiceDataOutput;
@@ -23,6 +25,7 @@ interface InvoiceFormProps {
 }
 
 export default function InvoiceForm({ initialExtractedData, initialValidationResult, imageFileName, onSaveSuccess }: InvoiceFormProps) {
+  const { currentUser } = useAuth(); // Get currentUser from AuthContext
   const [formData, setFormData] = useState<InvoiceFormData>({
     date: initialExtractedData.date || '',
     amount: initialExtractedData.amount || 0,
@@ -53,6 +56,13 @@ export default function InvoiceForm({ initialExtractedData, initialValidationRes
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+
+    if (!currentUser) {
+      toast({ title: 'Authentication Error', description: 'You must be logged in to save an invoice.', variant: 'destructive'});
+      setLoading(false); // Ensure loading is reset
+      return;
+    }
+
     if (!formData.category) {
       toast({ title: 'Validation Error', description: 'Please select a category.', variant: 'destructive'});
       return;
@@ -73,7 +83,8 @@ export default function InvoiceForm({ initialExtractedData, initialValidationRes
       imageFileName: imageFileName,
     };
     
-    const result = await saveInvoice(invoiceToSave);
+    // Pass currentUser.uid to saveInvoice
+    const result = await saveInvoice(invoiceToSave, currentUser.uid); 
     setLoading(false);
 
     if (result.success) {
@@ -146,10 +157,13 @@ export default function InvoiceForm({ initialExtractedData, initialValidationRes
               </Select>
             </div>
           </div>
-          <Button type="submit" className="w-full bg-primary text-primary-foreground hover:bg-primary/90" disabled={loading}>
+          <Button type="submit" className="w-full bg-primary text-primary-foreground hover:bg-primary/90" disabled={loading || !currentUser}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
             Save Document
           </Button>
+          {!currentUser && (
+            <p className="text-sm text-destructive text-center">Please log in to save the document.</p>
+          )}
         </form>
       </CardContent>
       <CardFooter>
@@ -158,3 +172,4 @@ export default function InvoiceForm({ initialExtractedData, initialValidationRes
     </Card>
   );
 }
+
