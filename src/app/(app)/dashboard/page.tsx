@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -136,8 +135,11 @@ export default function DashboardPage() {
                   <TableHead>Invoice #</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-right">Tax</TableHead>
+                  <TableHead className="text-right">Items</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Details</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -147,8 +149,8 @@ export default function DashboardPage() {
                     <TableCell className="text-muted-foreground text-xs">
                       {invoice.invoiceNumber ? (
                         <div className="flex items-center">
-                           <Hash className="mr-1 h-3 w-3 text-muted-foreground/70" />
-                           {invoice.invoiceNumber}
+                          <Hash className="mr-1 h-3 w-3 text-muted-foreground/70" />
+                          {invoice.invoiceNumber}
                         </div>
                       ) : (
                         'N/A'
@@ -156,6 +158,8 @@ export default function DashboardPage() {
                     </TableCell>
                     <TableCell>{formatDate(invoice.date)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(invoice.amount)}</TableCell>
+                    <TableCell className="text-right">{invoice.taxAmount !== undefined && invoice.taxAmount !== null ? formatCurrency(invoice.taxAmount) : 'N/A'}</TableCell>
+                    <TableCell className="text-right">{Array.isArray(invoice.items) ? invoice.items.length : 0}</TableCell>
                     <TableCell>
                       <Badge variant={invoice.category === 'gelir' ? 'default' : 'secondary'} className={invoice.category === 'gelir' ? 'bg-green-500/20 text-green-700 border-green-500/30' : 'bg-red-500/20 text-red-700 border-red-500/30'}>
                         {invoice.category === 'gelir' ? <TrendingUp className="mr-1 h-4 w-4" /> : <TrendingDown className="mr-1 h-4 w-4" />}
@@ -169,11 +173,18 @@ export default function DashboardPage() {
                           Suspicious
                         </Badge>
                       ) : (
-                         <Badge variant="default" className="bg-primary/20 text-primary border-primary/30">
+                        <Badge variant="default" className="bg-primary/20 text-primary border-primary/30">
                           <CheckCircle2 className="mr-1 h-4 w-4" />
                           Validated
                         </Badge>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <Link href={`/dashboard/invoice/${invoice.id}`}>
+                        <Button size="icon" variant="ghost" className="hover:bg-accent">
+                          <FileText className="h-5 w-5 text-primary" />
+                        </Button>
+                      </Link>
                     </TableCell>
                   </TableRow>
                 ))}

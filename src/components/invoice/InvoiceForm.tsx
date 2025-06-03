@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, type FormEvent } from 'react';
@@ -187,15 +186,32 @@ export default function InvoiceForm({ initialExtractedData, initialValidationRes
                 {formData.items.map((item, index) => (
                   <div key={index} className="text-sm p-3 border rounded-md bg-background shadow-sm">
                     <p className="font-medium text-primary">{item.description || "N/A"}</p>
-                    <div className="grid grid-cols-3 gap-x-2 text-xs text-muted-foreground">
+                    <div className="grid grid-cols-3 gap-x-2 text-xs text-muted-foreground items-center">
                       <span>Qty: {item.quantity ?? 'N/A'}</span>
-                      <span>Unit Price: {item.unitPrice?.toFixed(2) ?? 'N/A'}</span>
+                      <span>
+                        Unit Price: 
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className="w-24 ml-1 inline-block"
+                          value={item.unitPrice ?? ''}
+                          onChange={e => {
+                            const value = e.target.value === '' ? null : parseFloat(e.target.value);
+                            setFormData(prev => ({
+                              ...prev,
+                              items: prev.items.map((it, i) => i === index ? { ...it, unitPrice: value } : it)
+                            }));
+                          }}
+                          placeholder="N/A"
+                        />
+                      </span>
                       <span className="font-semibold text-foreground">Total: {item.totalPrice?.toFixed(2) ?? 'N/A'}</span>
                     </div>
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground">Item editing is not yet supported in this form. Extracted items will be saved as is.</p>
+              <p className="text-xs text-muted-foreground">You can edit the unit price for each item. Other fields are extracted automatically.</p>
             </div>
           )}
 
