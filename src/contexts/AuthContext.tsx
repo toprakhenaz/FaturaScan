@@ -8,6 +8,7 @@ import type { ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
 import { doc, getDoc, Timestamp } from 'firebase/firestore';
 import type { UserProfile, UserRole } from '@/lib/types';
+import { ensureUserProfile } from '@/lib/userUtils'; // Import the new utility
 
 interface AuthContextType {
   currentUser: User | null;
@@ -44,10 +45,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       setCurrentUser(user);
-      setAuthLoading(false);
+      setAuthLoading(false); // Auth state determined
 
       if (user) {
-        setRoleLoading(true);
+        setRoleLoading(true); // Start loading role/profile
+        await ensureUserProfile(user); // Ensure profile exists or is created
+
         try {
           const userDocRef = doc(db, 'users', user.uid);
           const userDocSnap = await getDoc(userDocRef);
@@ -55,35 +58,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const profileData = userDocSnap.data() as UserProfile;
             setUserProfile(profileData);
             setUserRole(profileData.role);
+            console.log(`[AuthContext] User profile loaded for UID ${user.uid}, Role: ${profileData.role}`);
           } else {
-            console.warn(`[AuthContext] User profile for UID ${user.uid} not found in Firestore. Defaulting role to 'user'.`);
+            // This case should be less frequent now due to ensureUserProfile,
+            // but kept as a fallback or if ensureUserProfile itself fails.
+            console.warn(`[AuthContext] User profile for UID ${user.uid} still not found after ensureUserProfile. Defaulting role to 'user'. This might indicate an issue with profile creation.`);
             const defaultProfile: UserProfile = {
               uid: user.uid,
               email: user.email,
               role: 'user',
-              createdAt: Timestamp.now()
+              createdAt: Timestamp.now(),
+              displayName: user.displayName || null,
             };
             setUserProfile(defaultProfile);
             setUserRole('user');
           }
         } catch (error) {
           console.error("[AuthContext] Error fetching user profile:", error);
-          setUserProfile(null); 
-          setUserRole(null); 
+          setUserProfile(null);
+          setUserRole(null);
         } finally {
-          setRoleLoading(false);
+          setRoleLoading(false); // Role/profile loading finished
         }
       } else {
         setUserProfile(null);
         setUserRole(null);
-        setRoleLoading(false); 
+        setRoleLoading(false); // No user, so role loading is "finished"
       }
     });
 
     return () => {
       unsubscribe();
     };
-  }, []);
+  }, []); // Removed db from dependencies as it's stable
 
   const overallLoading = authLoading || roleLoading;
 
@@ -104,7 +111,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           </div>
         </div>
       )}
-      {/* Render children, which might be covered by the loader/error overlay */}
       {children}
     </AuthContext.Provider>
   );
