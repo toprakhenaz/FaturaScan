@@ -1,70 +1,51 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
     // Helper function to check if a user is an admin
-    // Checks if the user document exists and has the role 'admin'
     function isAdmin(userId) {
-      let userDocPath = /databases/$(database)/documents/users/$(userId);
-      return exists(userDocPath) && get(userDocPath).data.role == 'admin';
+      let userDoc = get(/databases/$(database)/documents/users/$(userId));
+      return userDoc.exists && userDoc.data.role == 'admin';
     }
 
-    // Rules for the 'users' collection
     match /users/{userId} {
-      // Allow users to read their own profile.
-      // Allow admins to read any user's profile.
-      allow read: if request.auth != null &&
+      allow read: if request.auth != null && 
                     (request.auth.uid == userId || isAdmin(request.auth.uid));
       
-      // Allow users to create their own profile document during signup.
-      // - Must be authenticated.
-      // - Document ID must match authenticated user's UID.
-      // - Incoming resource's UID must match authenticated user's UID.
-      // - Incoming resource's email must match authenticated user's email from token.
-      // - New users must have the 'user' role.
-      // - Document must contain all required fields.
-      allow create: if request.auth != null &&
-                      request.auth.uid == userId &&
-                      request.resource.data.uid == request.auth.uid &&
-                      request.resource.data.email == request.auth.token.email &&
-                      request.resource.data.role == 'user' &&
-                      request.resource.data.keys().hasAll(['uid', 'email', 'role', 'createdAt']);
+      allow create: if request.auth != null && 
+                      request.auth.uid == userId && // User can only create their own profile
+                      request.resource.data.uid == request.auth.uid && // uid in doc must match auth uid
+                      request.resource.data.email == request.auth.token.email && // email in doc must match auth email
+                      request.resource.data.role == 'user' && // New users must have 'user' role
+                      request.resource.data.containsKey('createdAt'); // Ensure createdAt field is present
+                      // No other fields should be writable by user on create except those explicitly allowed/checked here
       
-      // Allow users to update their own profile, but NOT their role.
-      // Allow admins to update any field of any user's profile, including their role.
-      allow update: if request.auth != null &&
-                      ( // User updating their own profile (role cannot change)
-                        (request.auth.uid == userId && request.resource.data.role == resource.data.role) ||
-                        // Admin updating any profile
-                        isAdmin(request.auth.uid)
-                      );
-      
-      // Deleting user profiles is generally not recommended unless handled carefully.
-      // Example: allow delete: if isAdmin(request.auth.uid);
+      allow update: if request.auth != null && 
+                      ( (request.auth.uid == userId && 
+                         request.resource.data.role == resource.data.role && // User cannot change their own role
+                         request.resource.data.uid == resource.data.uid && // uid cannot be changed
+                         request.resource.data.email == resource.data.email && // email cannot be changed by user this way
+                         request.resource.data.createdAt == resource.data.createdAt // createdAt cannot be changed
+                         // Allow other fields like displayName to be updated by user
+                        ) || 
+                        isAdmin(request.auth.uid) // Admin can update any field, including role
+                      ); 
     }
 
-    // Rules for the 'invoices' collection
     match /invoices/{invoiceId} {
-      // When creating an invoice:
-      // - User must be authenticated.
-      // - The 'userId' field in the new invoice document must match the authenticated user's UID.
-      allow create: if request.auth != null &&
-                      request.resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && 
+                       request.resource.data.userId == request.auth.uid; // User ID in invoice must match creator's UID
+                       // Add other necessary field validations for invoice creation here
 
-      // When reading (get one invoice or list invoices):
-      // - User must be authenticated.
-      // - User can read their own invoices (invoice's userId matches auth.uid).
-      // - OR user is an admin.
-      allow get, list: if request.auth != null &&
-                         ( (resource.data.userId == request.auth.uid) || isAdmin(request.auth.uid) );
+      // User can read their own invoices, admin can read any invoice
+      allow get, list: if request.auth != null && 
+                         (resource.data.userId == request.auth.uid || isAdmin(request.auth.uid));
       
-      // When updating or deleting an invoice:
-      // - User must be authenticated.
-      // - User can update/delete their own invoices.
-      // - OR user is an admin.
-      allow update, delete: if request.auth != null &&
-                              ( (resource.data.userId == request.auth.uid) || isAdmin(request.auth.uid) );
+      // User can update/delete their own invoices, admin can update/delete any invoice
+      allow update, delete: if request.auth != null && 
+                              (resource.data.userId == request.auth.uid || isAdmin(request.auth.uid));
     }
   }
 }

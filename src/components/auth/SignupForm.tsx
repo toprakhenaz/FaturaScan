@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -11,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
-import { doc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore'; // Timestamp'ı firebase/firestore'dan import et
+import { doc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { UserProfile } from '@/lib/types';
 
 export default function SignupForm() {
@@ -41,10 +42,10 @@ export default function SignupForm() {
       let profileCreationSuccessful = false;
       if (user && db) {
         const userProfileData: UserProfile = {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-          role: 'user', // Yeni kullanıcılar için varsayılan rol
+          uid: user.uid, // Explicitly add uid
+          email: user.email, // Explicitly add email
+          displayName: user.displayName || null, // Ensure displayName is either string or null
+          role: 'user', 
           createdAt: serverTimestamp() as Timestamp,
         };
         try {
@@ -52,28 +53,24 @@ export default function SignupForm() {
           console.log(`[SignupForm] User profile created in Firestore for UID: ${user.uid}`);
           profileCreationSuccessful = true;
         } catch (firestoreError: any) {
-          console.error("[SignupForm] Error creating user profile in Firestore:", firestoreError);
+          console.error("[SignupForm] Error creating user profile in Firestore. User UID:", user.uid, "Data:", userProfileData, "Error:", firestoreError);
           toast({
             title: 'Signup Warning',
-            description: 'Account created, but saving user profile failed. Some features might not work correctly. Please contact support.',
+            description: `Account created, but saving user profile failed: ${firestoreError.message}. Some features might not work correctly. Please contact support.`,
             variant: 'destructive',
-            duration: 7000,
+            duration: 9000,
           });
-          // Profil oluşturma başarısız olsa bile devam et, kullanıcı en azından Auth'a kaydedildi.
         }
       }
       
       if (profileCreationSuccessful) {
         toast({ title: 'Signup Successful', description: 'Your account has been created and profile saved.' });
       } else if (user) {
-         // Profil kaydedilemediyse ama auth başarılıysa, bu zaten yukarıdaki toast ile belirtildi.
-         // İsteğe bağlı olarak burada farklı bir mesaj gösterilebilir.
-         toast({ title: 'Signup Successful (Auth Only)', description: 'Your account is created. Profile issues encountered.' });
+         toast({ title: 'Signup Successful (Auth Only)', description: 'Your account is created, but profile saving had issues. Please check logs.' });
       }
       router.push('/dashboard');
     } catch (err: any) {
       setError(err.message);
-      // Firebase Auth hatalarını daha kullanıcı dostu hale getirebiliriz
       let friendlyMessage = err.message;
       if (err.code === 'auth/email-already-in-use') {
         friendlyMessage = 'This email address is already in use. Please try a different email or login.';
