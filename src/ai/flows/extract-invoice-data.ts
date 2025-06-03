@@ -24,20 +24,18 @@ export type ExtractInvoiceDataInput = z.infer<typeof ExtractInvoiceDataInputSche
 const InvoiceItemSchema = z.object({
   description: z.string().optional().describe('Description of the item or service. May be empty if not found.'),
   quantity: z.number().optional().describe('Quantity of the item. Default to 1 if not specified or found.'),
-  unitPrice: z.number().optional().describe('Price per unit of the item. May be empty if not found.'),
-  totalPrice: z.number().optional().describe('Total price for this line item. May be empty if not found.'),
+  unitPrice: z.number().optional().describe('Price per unit of the item. May be empty if not found. If quantity is 1, this might be same as totalPrice.'),
+  totalPrice: z.number().optional().describe('Total price for this line item. May be empty if not found. For receipts, this is often the listed price for the item, potentially including tax.'),
 });
 export type InvoiceItem = z.infer<typeof InvoiceItemSchema>;
 
 const ExtractInvoiceDataOutputSchema = z.object({
-  date: z.string().optional().describe('The date on the invoice or receipt (YYYY-MM-DD format). If not found or format is different, leave empty or try to convert. Example: "3 Temmuz 2030" should be "2030-07-03".'),
-  amount: z.number().optional().describe('The grand total amount (TOPLAM FİYAT) on the invoice or receipt. If not found, leave empty.'),
-  vendor: z.string().optional().describe('The name of the vendor (company issuing the invoice, e.g., "KAYALI ŞİRKETLER GRUBU"). If not found, leave empty.'),
-  invoiceNumber: z.string().optional().describe('The invoice number (Fatura No). If not found, leave empty.'),
-  taxAmount: z.number().optional().describe('The total tax amount (e.g., KDV, VERGİLER). If an explicit total tax amount is listed, use that. If only a percentage and subtotal are given (e.g., VERGİLER: %15, ARA TOPLAM: 5200), calculate it. If not found or not applicable, leave empty.'),
-  items: z.array(InvoiceItemSchema).optional().describe('Line items from the invoice. Each item should include description, quantity, unitPrice, and totalPrice if available. If not found or not applicable, leave empty array.'),
-  // customerName: z.string().optional().describe('The name of the customer or client (ALICI BİLGİLERİ or similar). If not found, leave empty.'), // Optional: Add if needed
-  // subTotal: z.number().optional().describe('The subtotal amount (ARA TOPLAM) before taxes. If not found, leave empty.'), // Optional: Add if needed
+  date: z.string().optional().describe('The date on the invoice or receipt (YYYY-MM-DD format). If not found or format is different (e.g., DD.MM.YYYY), try to convert. Example: "23.02.2024" should be "2024-02-23". "3 Temmuz 2030" should be "2030-07-03".'),
+  amount: z.number().optional().describe('The grand total amount on the invoice or receipt. Look for labels like "TOPLAM", "GENEL TOPLAM", "ÖDENECEK TUTAR", "FATURA TOPLAMI". This is often at the bottom. If not found, leave empty.'),
+  vendor: z.string().optional().describe('The name of the vendor (company issuing the invoice, e.g., "KAYALI ŞİRKETLER GRUBU", "BİM BİRLEŞİK MAĞAZALAR A.Ş.", "Firma Adı", "Şirket Adı"). If not found, leave empty.'),
+  invoiceNumber: z.string().optional().describe('The invoice number. Look for "Fatura No", "FATURA NO". Sometimes there might be other numbers like "NO:", "Fiş No:", or "ETTN"; prioritize "FATURA NO". If not found, leave empty.'),
+  taxAmount: z.number().optional().describe('The total tax amount. Look for labels like "TOPKDV", "KDV TOPLAMI", "Toplam Vergi". If an explicit total tax amount is listed, use that. If only a percentage and subtotal are given, calculate it. If not found or not applicable, leave empty.'),
+  items: z.array(InvoiceItemSchema).optional().describe('Line items from the invoice or receipt. Each item should include description, quantity, unitPrice, and totalPrice if available. For retail receipts: quantity is often 1 if not specified. Values like "%20" next to an item are likely VAT percentages or discount codes, not quantities. The price listed for an item on a receipt is often the total price for that line item, potentially including tax (extract as totalPrice). If not found or not applicable, leave empty array.'),
 });
 export type ExtractInvoiceDataOutput = z.infer<typeof ExtractInvoiceDataOutputSchema>;
 
@@ -49,30 +47,29 @@ const prompt = ai.definePrompt({
   name: 'extractInvoiceDataPrompt',
   input: {schema: ExtractInvoiceDataInputSchema},
   output: {schema: ExtractInvoiceDataOutputSchema},
-  prompt: `You are an expert accounting assistant specializing in extracting information from Turkish invoices and receipts.
+  prompt: `You are an expert accounting assistant specializing in extracting information from Turkish invoices, receipts, and "Bilgi Fişi" (information slips) like the ones from BİM.
   Your task is to meticulously extract key information from the provided scanned image. Prioritize accuracy. If a field is ambiguous or not present, it's better to omit it or leave it empty/null than to guess incorrectly.
 
   Please extract the following information:
-  - Vendor (Satıcı Adı): Identify the company or entity that issued the invoice. This is often found at the top, like "KAYALI ŞİRKETLER GRUBU" in the example. Do not confuse with "ALICI BİLGİLERİ".
-  - Date (Düzenlenme Tarihi): The date the invoice was issued. Convert to YYYY-MM-DD format. For example, "3 Temmuz 2030" should become "2030-07-03". If not found, omit.
-  - Amount (Toplam Fiyat/Tutar): The grand total amount due, usually labeled as "TOPLAM FİYAT" or similar. Extract the numeric value. If not found, omit.
-  - Invoice Number (Fatura No): The unique identification number for the invoice. If not found, omit.
-  - Tax Amount (Toplam Vergi Tutarı/KDV Tutarı): The total amount of tax. Look for labels like "VERGİLER TOPLAMI", "KDV TOPLAMI".
-    If only a percentage and a subtotal (ARA TOPLAM) are provided (e.g., "VERGİLER : %15", "ARA TOPLAM : 5200,00 TL"), calculate the tax amount (e.g., 5200 * 0.15 = 780).
+  - Vendor (Satıcı Adı/Firma Adı): Identify the company or entity that issued the document (e.g., "KAYALI ŞİRKETLER GRUBU", "BİM BİRLEŞİK MAĞAZALAR A.Ş."). This is often found at the top.
+  - Date (Tarih/Düzenlenme Tarihi): The date the document was issued. Convert common Turkish formats like DD.MM.YYYY or "Gün Ay Yıl" (e.g., "3 Temmuz 2030") to YYYY-MM-DD format. For example, "23.02.2024" should become "2024-02-23". If not found, omit.
+  - Amount (Toplam Tutar/Genel Toplam): The grand total amount due. Look for labels like "TOPLAM", "GENEL TOPLAM", "ÖDENECEK TUTAR", "FATURA TOPLAMI". It's often at the bottom or near payment details. Extract the numeric value. If not found, omit.
+  - Invoice Number (Fatura No): The unique identification number. Look for "Fatura No" or "FATURA NO" explicitly. If there are multiple numbers like a simple "NO:", "Fiş No:", or "ETTN", prioritize the one labeled "FATURA NO". If not found, omit.
+  - Tax Amount (Toplam Vergi Tutarı/KDV Tutarı): The total amount of tax. Look for labels like "TOPKDV", "KDV TOPLAMI", "Toplam Vergi". 
+    If only a percentage and a subtotal are provided, calculate the tax amount.
     If there's a discrepancy between a listed tax amount and a calculated one, prefer the explicitly listed tax amount. If no tax information is found, omit.
-  - Items (Fatura Kalemleri): A list of line items. For each item, extract:
+  - Items (Kalemler/Ürünler): A list of line items. For each item, extract:
     - description (AÇIKLAMA): The description of the product or service.
-    - quantity (MİKTAR): The quantity of the item. Assume 1 if not specified.
-    - unitPrice (BİRİM FİYATI): The price per unit.
-    - totalPrice (TOPLAM): The total price for that line item (quantity * unitPrice).
-    The "KDV" column in the example (with "1") seems to be an indicator, not a standard VAT rate for the line item; do not misinterpret it as quantity or price. Focus on the "AÇIKLAMA", "MİKTAR", "BİRİM FİYATI", and "TOPLAM" columns for items.
+    - quantity (MİKTAR): The quantity of the item. For retail receipts or single-item entries, if quantity is not explicitly stated, assume 1. A percentage like "%20" next to an item is likely a VAT rate or discount, NOT quantity.
+    - unitPrice (BİRİM FİYATI): The price per unit. If quantity is 1, this may be the same as totalPrice. If not clearly identifiable, it can be omitted.
+    - totalPrice (TOPLAM TUTAR): The total price for that line item. For retail receipts, the listed price for an item is often this total price (potentially KDV dahil/including VAT).
     If line items are not clearly identifiable or not applicable, return an empty array for items.
 
   Here is the scanned image:
   {{media url=photoDataUri}}
 
-  Return the extracted information in JSON format according to the defined output schema. Ensure all monetary values are numbers, not strings with currency symbols (e.g., "100,00 TL" should be 100.00).
-  If a core field like date, total amount, or vendor name is absolutely unidentifiable from the image, you can omit it from the output.
+  Return the extracted information in JSON format according to the defined output schema. Ensure all monetary values are numbers, not strings with currency symbols (e.g., "4,499.00 TL" should be 4499.00).
+  For core fields like Date, Amount (grand total), and Vendor: if they are absolutely unidentifiable from the image, you can omit them, but try your best to find them.
   `,
 });
 
@@ -84,13 +81,15 @@ const extractInvoiceDataFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await prompt(input);
+    
     // Ensure default values for items if undefined, and ensure items are valid
+    // Also, if quantity is missing for an item, default it to 1
     const items = output?.items?.map(item => ({
-        description: item.description || undefined, // Explicitly set to undefined if null/empty
-        quantity: item.quantity === null || item.quantity === undefined ? undefined : Number(item.quantity),
+        description: item.description || undefined, 
+        quantity: item.quantity === null || item.quantity === undefined ? 1 : Number(item.quantity), // Default to 1 if not present
         unitPrice: item.unitPrice === null || item.unitPrice === undefined ? undefined : Number(item.unitPrice),
         totalPrice: item.totalPrice === null || item.totalPrice === undefined ? undefined : Number(item.totalPrice),
-    })).filter(item => item.description || item.totalPrice) || []; // Filter out items that are completely empty
+    })).filter(item => item.description || item.totalPrice) || [];
 
     return {
         date: output?.date || undefined,
