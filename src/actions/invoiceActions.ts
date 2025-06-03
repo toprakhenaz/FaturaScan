@@ -1,13 +1,17 @@
 
 'use server';
 
+import type { User } from 'firebase/auth';
 import { z } from 'zod';
-import { db } from '@/lib/firebase'; // Removed auth, app as they are not directly used here for auth check
+import { getAuth as getFirebaseAuth } from 'firebase/auth';
+import { app as firebaseAppInstance, db } from '@/lib/firebase'; 
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { extractInvoiceData, ExtractInvoiceDataInput, ExtractInvoiceDataOutput } from '@/ai/flows/extract-invoice-data';
 import { validateExtractedData, ValidateExtractedDataInput, ValidateExtractedDataOutput } from '@/ai/flows/validate-extracted-data';
-import type { Invoice } from '@/lib/types';
-// User type from firebase/auth is not needed if we pass userId
+import type { Invoice, InvoiceItem } from '@/lib/types';
+
+const globalAuth = firebaseAppInstance ? getFirebaseAuth(firebaseAppInstance) : null;
+
 
 const processInvoiceSchema = z.object({
   photoDataUri: z.string().startsWith('data:image/', { message: "Invalid image data URI" }),
@@ -30,11 +34,20 @@ export async function processInvoiceUpload(formData: FormData): Promise<{
     const extractedData = await extractInvoiceData(extractionInput);
 
     if (!extractedData || !extractedData.date || extractedData.amount == null || !extractedData.vendor) {
-        return { extractedData, validationResult: null, error: "AI could not extract all required fields. Please check the image or try again." };
+        // Even if some new fields are missing, proceed with validation for core fields.
+        // The form will handle missing optional fields.
+        let errorMsg = "AI could not extract all required core fields (Date, Amount, Vendor). ";
+        if (extractedData && (!extractedData.date || extractedData.amount == null || !extractedData.vendor)) {
+             errorMsg += `Missing: ${!extractedData.date ? 'Date, ' : ''}${extractedData.amount == null ? 'Amount, ' : ''}${!extractedData.vendor ? 'Vendor' : ''}`.slice(0, -2);
+        } else {
+            errorMsg += "Please check the image or try again.";
+        }
+        // We still return extractedData so user can see what was extracted
+        return { extractedData, validationResult: null, error: errorMsg };
     }
     
     const validationInput: ValidateExtractedDataInput = {
-      date: extractedData.date,
+      date: extractedData.date, // These are asserted as non-null by the check above
       amount: extractedData.amount,
       vendor: extractedData.vendor,
     };
@@ -43,16 +56,25 @@ export async function processInvoiceUpload(formData: FormData): Promise<{
     return { extractedData, validationResult };
 
   } catch (error: any) {
-    console.error("Error processing invoice:", error);
+    console.error("[processInvoiceUpload] Error processing invoice:", error);
     return { extractedData: null, validationResult: null, error: error.message || "An unexpected error occurred during AI processing." };
   }
 }
 
+const invoiceItemSchemaForSave = z.object({
+  description: z.string(),
+  quantity: z.number(),
+  unitPrice: z.number(),
+  totalPrice: z.number(),
+});
 
 const saveInvoiceSchema = z.object({
   date: z.string(),
   amount: z.number(),
   vendor: z.string().min(1, "Vendor name is required"),
+  invoiceNumber: z.string().nullish(),
+  taxAmount: z.number().nullish(),
+  items: z.array(invoiceItemSchemaForSave).nullish(),
   category: z.enum(['gelir', 'gider']),
   validationSummary: z.string(),
   isDateValid: z.boolean(),
@@ -66,14 +88,14 @@ const saveInvoiceSchema = z.object({
 
 export async function saveInvoice(
   invoiceData: Omit<Invoice, 'id' | 'userId' | 'createdAt' | 'updatedAt'>,
-  userId: string // Added userId as a parameter
+  userId: string
 ): Promise<{ success: boolean; invoiceId?: string; error?: string }> {
   
-  console.log("[saveInvoice Action] Initiated for userId:", userId);
+  console.log("[saveInvoice Action] Initiated for userId:", userId, "with data:", invoiceData);
 
   if (!userId) {
-    console.error("[saveInvoice Action] userId parameter is missing or empty.");
-    return { success: false, error: "User ID is missing. Cannot save invoice." };
+    console.error("[saveInvoice Action] Critical: userId parameter is missing or empty.");
+    return { success: false, error: "User ID is missing. Cannot save invoice. (SA-NoUIDParam)" };
   }
 
   if (!db) {
@@ -84,15 +106,15 @@ export async function saveInvoice(
   
   const validation = saveInvoiceSchema.safeParse(invoiceData);
   if(!validation.success) {
-    console.warn("[saveInvoice Action] Invoice data validation failed:", validation.error.errors);
-    return { success: false, error: validation.error.errors.map(e => e.message).join(', ') };
+    console.warn("[saveInvoice Action] Invoice data validation failed:", validation.error.format());
+    return { success: false, error: validation.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ') };
   }
 
   try {
-    console.log(`[saveInvoice Action] Attempting to save invoice for user: ${userId}`);
+    console.log(`[saveInvoice Action] Attempting to save validated invoice for user: ${userId}`);
     const docRef = await addDoc(collection(db, 'invoices'), {
       ...invoiceData,
-      userId: userId, // Use the passed userId
+      userId: userId, 
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -103,3 +125,4 @@ export async function saveInvoice(
     return { success: false, error: error.message || "Failed to save invoice to database." };
   }
 }
+

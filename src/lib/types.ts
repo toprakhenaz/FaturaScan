@@ -1,6 +1,13 @@
 
 import type { Timestamp } from 'firebase/firestore';
 
+export interface InvoiceItem {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+}
+
 export interface Invoice {
   id?: string; // Firestore document ID
   userId: string;
@@ -9,6 +16,9 @@ export interface Invoice {
   date: string; // YYYY-MM-DD
   amount: number;
   vendor: string;
+  invoiceNumber?: string | null; // New field
+  taxAmount?: number | null; // New field
+  items?: InvoiceItem[] | null; // New field for line items
   
   category: 'gelir' | 'gider'; // Income or Expense
   
@@ -41,3 +51,4 @@ export interface UserProfile {
   role: UserRole;
   createdAt: Timestamp;
 }
+

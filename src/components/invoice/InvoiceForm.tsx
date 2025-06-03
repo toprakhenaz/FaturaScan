@@ -11,11 +11,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { saveInvoice } from '@/actions/invoiceActions';
-import type { Invoice, InvoiceFormData } from '@/lib/types';
+import type { Invoice, InvoiceFormData, InvoiceItem } from '@/lib/types';
 import type { ExtractInvoiceDataOutput } from '@/ai/flows/extract-invoice-data';
 import type { ValidateExtractedDataOutput } from '@/ai/flows/validate-extracted-data';
-import { AlertTriangle, CheckCircle2, Loader2, Save } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext'; // Import useAuth
+import { AlertTriangle, CheckCircle2, Loader2, Save, ListChecks } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext'; 
+import { Textarea } from '@/components/ui/textarea';
 
 interface InvoiceFormProps {
   initialExtractedData: ExtractInvoiceDataOutput;
@@ -25,12 +26,15 @@ interface InvoiceFormProps {
 }
 
 export default function InvoiceForm({ initialExtractedData, initialValidationResult, imageFileName, onSaveSuccess }: InvoiceFormProps) {
-  const { currentUser } = useAuth(); // Get currentUser from AuthContext
+  const { currentUser } = useAuth(); 
   const [formData, setFormData] = useState<InvoiceFormData>({
     date: initialExtractedData.date || '',
     amount: initialExtractedData.amount || 0,
     vendor: initialExtractedData.vendor || '',
-    category: '', // Default to empty, user must select
+    invoiceNumber: initialExtractedData.invoiceNumber || null,
+    taxAmount: initialExtractedData.taxAmount || null,
+    items: initialExtractedData.items || [],
+    category: '', 
     validationSummary: initialValidationResult.summary || '',
     isDateValid: initialValidationResult.validationResult.isDateValid,
     isAmountValid: initialValidationResult.validationResult.isAmountValid,
@@ -42,12 +46,21 @@ export default function InvoiceForm({ initialExtractedData, initialValidationRes
   const router = useRouter();
   const { toast } = useToast();
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'number' ? parseFloat(value) : value,
-    }));
+    // Handle number inputs specifically
+    if (type === 'number') {
+      // Allow empty string for optional number fields, parse to number if not empty, else null
+      setFormData(prev => ({
+        ...prev,
+        [name]: value === '' ? null : parseFloat(value),
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value,
+      }));
+    }
   };
 
   const handleCategoryChange = (value: 'gelir' | 'gider') => {
@@ -59,7 +72,6 @@ export default function InvoiceForm({ initialExtractedData, initialValidationRes
 
     if (!currentUser) {
       toast({ title: 'Authentication Error', description: 'You must be logged in to save an invoice.', variant: 'destructive'});
-      setLoading(false); // Ensure loading is reset
       return;
     }
 
@@ -73,6 +85,9 @@ export default function InvoiceForm({ initialExtractedData, initialValidationRes
       date: formData.date,
       amount: formData.amount,
       vendor: formData.vendor,
+      invoiceNumber: formData.invoiceNumber || null,
+      taxAmount: formData.taxAmount || null,
+      items: formData.items || [],
       category: formData.category,
       validationSummary: formData.validationSummary,
       isDateValid: formData.isDateValid,
@@ -83,7 +98,6 @@ export default function InvoiceForm({ initialExtractedData, initialValidationRes
       imageFileName: imageFileName,
     };
     
-    // Pass currentUser.uid to saveInvoice
     const result = await saveInvoice(invoiceToSave, currentUser.uid); 
     setLoading(false);
 
@@ -144,6 +158,14 @@ export default function InvoiceForm({ initialExtractedData, initialValidationRes
               <Label htmlFor="amount">Amount (TRY)</Label>
               <Input id="amount" name="amount" type="number" step="0.01" value={formData.amount} onChange={handleChange} />
             </div>
+             <div className="space-y-2">
+              <Label htmlFor="invoiceNumber">Invoice Number (Optional)</Label>
+              <Input id="invoiceNumber" name="invoiceNumber" value={formData.invoiceNumber || ''} onChange={handleChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="taxAmount">Tax Amount (Optional)</Label>
+              <Input id="taxAmount" name="taxAmount" type="number" step="0.01" value={formData.taxAmount ?? ''} onChange={handleChange} />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="category">Category</Label>
               <Select name="category" onValueChange={handleCategoryChange} value={formData.category}>
@@ -157,6 +179,27 @@ export default function InvoiceForm({ initialExtractedData, initialValidationRes
               </Select>
             </div>
           </div>
+          
+          {formData.items && formData.items.length > 0 && (
+            <div className="space-y-2 col-span-full">
+              <Label className="flex items-center"><ListChecks className="mr-2 h-5 w-5" /> Extracted Items</Label>
+              <div className="p-3 border rounded-md bg-muted/10 space-y-3 max-h-60 overflow-y-auto">
+                {formData.items.map((item, index) => (
+                  <div key={index} className="text-sm p-3 border rounded-md bg-background shadow-sm">
+                    <p className="font-medium text-primary">{item.description || "N/A"}</p>
+                    <div className="grid grid-cols-3 gap-x-2 text-xs text-muted-foreground">
+                      <span>Qty: {item.quantity ?? 'N/A'}</span>
+                      <span>Unit Price: {item.unitPrice?.toFixed(2) ?? 'N/A'}</span>
+                      <span className="font-semibold text-foreground">Total: {item.totalPrice?.toFixed(2) ?? 'N/A'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">Item editing is not yet supported in this form. Extracted items will be saved as is.</p>
+            </div>
+          )}
+
+
           <Button type="submit" className="w-full bg-primary text-primary-foreground hover:bg-primary/90" disabled={loading || !currentUser}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
             Save Document
@@ -172,4 +215,3 @@ export default function InvoiceForm({ initialExtractedData, initialValidationRes
     </Card>
   );
 }
-

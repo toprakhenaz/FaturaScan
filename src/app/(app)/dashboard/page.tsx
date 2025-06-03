@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -7,7 +8,7 @@ import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/
 import type { Invoice } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { PlusCircle, TrendingUp, TrendingDown, Loader2, AlertTriangle, CheckCircle2, FileText } from 'lucide-react';
+import { PlusCircle, TrendingUp, TrendingDown, Loader2, AlertTriangle, CheckCircle2, FileText, Hash } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -132,6 +133,7 @@ export default function DashboardPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Vendor</TableHead>
+                  <TableHead>Invoice #</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead>Category</TableHead>
@@ -142,6 +144,16 @@ export default function DashboardPage() {
                 {invoices.map((invoice) => (
                   <TableRow key={invoice.id}>
                     <TableCell className="font-medium">{invoice.vendor}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">
+                      {invoice.invoiceNumber ? (
+                        <div className="flex items-center">
+                           <Hash className="mr-1 h-3 w-3 text-muted-foreground/70" />
+                           {invoice.invoiceNumber}
+                        </div>
+                      ) : (
+                        'N/A'
+                      )}
+                    </TableCell>
                     <TableCell>{formatDate(invoice.date)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(invoice.amount)}</TableCell>
                     <TableCell>
@@ -173,3 +185,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

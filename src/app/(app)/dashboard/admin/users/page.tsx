@@ -8,7 +8,7 @@ import type { UserProfile } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, AlertTriangle, Users, Shield } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertTriangle, Users, ShieldCheck } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
@@ -100,7 +100,7 @@ export default function UserManagementPage() {
                     <TableCell className="font-medium">{user.email}</TableCell>
                     <TableCell>
                       <Badge variant={user.role === 'admin' ? 'destructive' : 'secondary'}>
-                         <Shield className="mr-1 h-3 w-3" />
+                         <ShieldCheck className="mr-1 h-3 w-3" />
                         {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
                       </Badge>
                     </TableCell>
@@ -116,3 +116,4 @@ export default function UserManagementPage() {
     </div>
   );
 }
+

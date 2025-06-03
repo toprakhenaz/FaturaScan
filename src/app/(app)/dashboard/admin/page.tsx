@@ -30,6 +30,22 @@ export default function AdminDashboardPage() {
             </Button>
           </CardContent>
         </Card>
+        
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-headline flex items-center">
+                <Settings className="mr-2 h-6 w-6" /> Application Settings
+            </CardTitle>
+            <CardDescription>Configure global settings for the application.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild className="w-full">
+              <Link href="/dashboard/admin/settings">
+                Configure Settings
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
@@ -44,21 +60,8 @@ export default function AdminDashboardPage() {
             </Button>
           </CardContent>
         </Card>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-headline flex items-center">
-                <Settings className="mr-2 h-6 w-6" /> Application Settings (Coming Soon)
-            </CardTitle>
-            <CardDescription>Configure global settings for the application.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button className="w-full" disabled>
-              Configure Settings
-            </Button>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
 }
+
